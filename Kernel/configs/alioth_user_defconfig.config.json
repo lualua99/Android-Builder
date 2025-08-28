@@ -9,8 +9,8 @@
         },
         "toolchains": [
             {
-                "name": "proton-clang",
-                "repo": "https://github.com/kdrag0n/proton-clang",
+                "name": "zyc_clang-14",
+                "repo": "https://github.com/EmanuelCN/zyc_clang-14",
                 "branch": "master",
                 "binaryEnv": [
                     "./bin"
