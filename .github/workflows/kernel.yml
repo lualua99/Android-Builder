@@ -16,11 +16,9 @@ jobs:
       CONFIGS: ${{ steps.generate-matrix.outputs.CONFIGS }}
       BUILD_DATE: ${{ steps.generate-builddate.outputs.BUILDDATE }}
     steps:
-      # This action checks-out your CONFIGSitory under $GITHUB_WORKSPACE, so your workflow can access it.
       - name: 😄 Checkout
         uses: actions/checkout@v4
 
-      # Match the configuration files in the CONFIGS directory, read the contents and merge them into an array.
       - name: 😆 Generate Matrix
         id: generate-matrix
         run: |
@@ -28,7 +26,6 @@ jobs:
           jq -s '[.[][]]' Kernel/configs/*.config.json >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # Set compile time.
       - name: ⏰ Set builddate
         id: generate-builddate
         run: echo "BUILDDATE=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
@@ -44,89 +41,65 @@ jobs:
       matrix:
         CONFIG: ${{ fromJSON(needs.Read-configuration.outputs.CONFIGS) }}
     env:
-      # Basic configuration
       WORKSPACE: ${{ github.workspace }}
       BUILD_DATE: "${{ needs.Read-configuration.outputs.BUILD_DATE }}"
-
-      # Kernel source configuration
       KERNEL_NAME: ${{ matrix.CONFIG.kernelSource.name }}
       KERNEL_REPO: ${{ matrix.CONFIG.kernelSource.repo }}
       KERNEL_BRANCH: ${{ matrix.CONFIG.kernelSource.branch }}
       KERNEL_DEVICE: ${{ matrix.CONFIG.kernelSource.device }}
       KERNEL_DEFCONFIG_PATH: ${{ matrix.CONFIG.kernelSource.defconfig }}
-
-      # Whether to use ccache to speed up compilation
       ENABLE_CCACHE: ${{ matrix.CONFIG.enableCcache }}
-
-      # Whether to use ANYKERNEL3 packaged flash package
       USE_ANYKERNEL3: ${{ matrix.CONFIG.AnyKernel3.use }}
-
-      # Whether to publish
       CONFIRM_RELEASE: ${{ matrix.CONFIG.AnyKernel3.release }}
-
-      # Whether to enable KernelSU
       ENABLE_KERNELSU: ${{ matrix.CONFIG.enableKernelSU }}
-
-      # Whether to enable LXC docker
       ENABLE_LXC: ${{ matrix.CONFIG.enableLXC }}
-
-      # Set output & ccache directory
       OUT_DIR: "${{ github.workspace }}/out"
       CCACHE_DIR: "${{ github.workspace }}/ccache"
     steps:
-      # Set swap space
       - name: 📐 Set swap to 10G
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 10
 
-      # This action checks-out your CONFIGSitory under $GITHUB_WORKSPACE, so your workflow can access it.
       - name: 😄 Checkout
         uses: actions/checkout@v4
 
-     # 替换原有的 "⭐ Install prerequisites" 步骤
       - name: ⭐ Install prerequisites (fixed Python 2)
-         run: |
-    sudo apt-get update
-    # 安装其他依赖（移除 python2 和 python2-dev）
-    sudo apt-get install -y curl git ftp lftp wget libarchive-tools ccache python3
-    sudo apt-get install -y pngcrush schedtool dpkg-dev liblz4-tool make optipng maven device-tree-compiler 
-    sudo apt-get install -y libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc
-    sudo apt-get install -y libxml2-utils libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools lzop flex tree
-    sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev
-    sudo apt-get install -y pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl 
-    sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
+        run: |
+          sudo apt-get update
+          # 安装其他依赖
+          sudo apt-get install -y curl git ftp lftp wget libarchive-tools ccache python3
+          sudo apt-get install -y pngcrush schedtool dpkg-dev liblz4-tool make optipng maven device-tree-compiler 
+          sudo apt-get install -y libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc
+          sudo apt-get install -y libxml2-utils libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools lzop flex tree
+          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev
+          sudo apt-get install -y pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl 
+          sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
 
-    # 手动安装 Python 2（适用于 Ubuntu 22.04+）
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2_2.7.18-1~20.04.3ubuntu1_amd64.deb
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2-minimal_2.7.18-1~20.04.3ubuntu1_amd64.deb
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2-stdlib_2.7.18-1~20.04.3ubuntu1_amd64.deb
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2.7_2.7.18-1~20.04.3ubuntu1_amd64.deb
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2.7-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2.7_2.7.18-1~20.04.3ubuntu1_amd64.deb
-    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2.7-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          # 手动安装 Python 2（适用于 Ubuntu 22.04+）
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2-minimal_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2-stdlib_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2.7_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2.7-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2.7_2.7.18-1~20.04.3ubuntu1_amd64.deb
+          wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2.7-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
 
-    # 安装下载的 Python 2 包
-    sudo dpkg -i *.deb || sudo apt-get -f install -y
+          # 安装下载的 Python 2 包
+          sudo dpkg -i *.deb || sudo apt-get -f install -y
 
-    # 验证安装
-    python2 --version
+          # 验证安装
+          python2 --version
 
-      # Initialize ccache
       - name: 🚄 Setup ccache
         if: ${{ env.ENABLE_CCACHE == 'true' }}
         id: hash
         run: |
-          # Create output directory
           mkdir -p ${{ env.OUT_DIR }}
-
-          # Initialize ccache
           ccache -o compression=false -o cache_dir=${{ env.CCACHE_DIR }}
-
-          # Generate configuration's hash
-          echo $(echo -n '${{ toJSON(matrix.config) }}' | openssl dgst -sha1 | awk '{print $2}')
-          echo "HASH=$(echo -n '${{ toJSON(matrix.config) }}' | openssl dgst -sha1 | awk '{print $2}')" >> $GITHUB_OUTPUT
+          # 修复变量引用（matrix.config → matrix.CONFIG）
+          echo "HASH=$(echo -n '${{ toJSON(matrix.CONFIG) }}' | openssl dgst -sha1 | awk '{print $2}')" >> $GITHUB_OUTPUT
 
       - name: 🚅 Cache ccache & output
         env:
@@ -146,7 +119,6 @@ jobs:
       - name: 🌟 Clone kernel source => (${{ env.KERNEL_REPO }})
         run: |
           git clone --recursive --depth=1 -j $(nproc) --branch ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_REPO }} ${{ env.KERNEL_NAME }}
-          # tree ${{ env.KERNEL_NAME }}
 
       - name: 💫 Get toolchains
         env:
@@ -157,47 +129,38 @@ jobs:
 
           for ((i=0;i<toolchains_num;i++)); do
             toolchain=$(echo $toolchains | jq -r ".[$i]")
-
             toolchain_name=$(echo $toolchain | jq -r ".name")
             
-            # From archive
+            # 修复目录创建的变量引用（单引号→双引号）
             if echo $toolchain | jq -e 'has("url")' > /dev/null; then
-              # If from archive
               toolchain_url=$(echo $toolchain | jq -r ".url")
-              mkdir -p '$toolchain_name'
+              mkdir -p "$toolchain_name"  # 修复此处单引号问题
 
-              # Download archive
               wget "$toolchain_url"
-
-              # Get filename
               filename="${toolchain_url##*/}"
               case "$filename" in
                 *.zip)
-                  unzip -d $toolchain_name "$filename"
+                  unzip -d "$toolchain_name" "$filename"
                   ;;
                 *.tar)
-                  tar xvf "$filename" -C $toolchain_name
+                  tar xvf "$filename" -C "$toolchain_name"
                   ;;
                 *.tar.gz)
-                  tar zxvf "$filename" -C $toolchain_name
+                  tar zxvf "$filename" -C "$toolchain_name"
                   ;;
                 *.rar)
-                  unrar x "$filename" $toolchain_name
+                  unrar x "$filename" "$toolchain_name"
                   ;;
                 *)
                   echo "unknown file type: $filename"
                   ;;
               esac
-              # Delete file to avoid duplicate name conflicts 
-              rm $filename
-
+              rm "$filename"
               echo "🤔 Download $toolchain_name => ($toolchain_url)"
             else
-              # If from git
               toolchain_repo=$(echo $toolchain | jq -r ".repo")
               toolchain_branch=$(echo $toolchain | jq -r ".branch")
-              git clone --recursive --depth=1 -j $(nproc) --branch $toolchain_branch $toolchain_repo $toolchain_name
-
+              git clone --recursive --depth=1 -j $(nproc) --branch "$toolchain_branch" "$toolchain_repo" "$toolchain_name"
               echo "🤔 Clone $toolchain_name => ($toolchain_repo)"
             fi
 
@@ -214,17 +177,15 @@ jobs:
         run: |
           echo "🤔 PATH Variable: $PATH"
 
-          ARCH=$(echo $PARAMS | jq -r ".ARCH")
-          CC=$(echo $PARAMS | jq -r ".CC")
+          ARCH=$(echo "$PARAMS" | jq -r ".ARCH")
+          CC=$(echo "$PARAMS" | jq -r ".CC")
 
           args="-j${{ env.THREAD }} O=${{ env.OUT_DIR }} ARCH=$ARCH"
           if [ -n "$CC" ]; then
-
             if [[ "$CC" == *"/"* ]]; then
-              CC=${{ env.WORKSPACE }}/$CC
+              CC="${{ env.WORKSPACE }}/$CC"
             fi
-
-            if [ ${{ env.ENABLE_CCACHE }} = true ]; then
+            if [ "${{ env.ENABLE_CCACHE }}" = true ]; then
               args="$args CC=\"ccache $CC\""
             else
               args="$args CC=$CC"
@@ -241,8 +202,8 @@ jobs:
 
           echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
           echo "ARGS=$args" >> $GITHUB_OUTPUT
-
           echo "🤔 $args"
+        shell: bash  # 显式指定shell为bash，确保process substitution正常工作
 
       - name: 😋 Setup KernelSU
         working-directory: ${{ env.KERNEL_NAME }}
@@ -250,7 +211,7 @@ jobs:
           ARCH: ${{ steps.generate-args.outputs.ARCH }}
         if: ${{ env.ENABLE_KERNELSU == 'true' }}
         run: |
-          # Delete old KernelSU
+          # 删除旧的KernelSU文件
           if [ -d "./KernelSU" ]; then
             rm -rf "./KernelSU"
           fi
@@ -258,55 +219,55 @@ jobs:
             rm -rf "./drivers/kernelsu"
           fi
 
-          # Apply new KernelSU patches
+          # 应用KernelSU补丁
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
 
-          echo -e "CONFIG_KPROBES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}
-          echo -e "CONFIG_HAVE_KPROBES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}
-          echo -e "CONFIG_KPROBE_EVENTS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}
+          # 添加必要配置
+          echo -e "CONFIG_KPROBES=y" >> "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
+          echo -e "CONFIG_HAVE_KPROBES=y" >> "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
+          echo -e "CONFIG_KPROBE_EVENTS=y" >> "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
 
-          cat arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}
+          cat "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
 
       - name: 😋 Setup LXC docker
         working-directory: ${{ env.KERNEL_NAME }}
         env:
-          DEFCONFIG: ${{ env.WORKSPACE }}/${{ env.KERNEL_NAME }}/arch/${{ steps.generate-args.outputs.ARCH }}/configs/${{env.KERNEL_DEFCONFIG_PATH}}
-          ADD_DEFCONFIG: ${{ env.WORKSPACE }}/Kernel/LXC/LXC_defconfig
+          DEFCONFIG: "${{ env.WORKSPACE }}/${{ env.KERNEL_NAME }}/arch/${{ steps.generate-args.outputs.ARCH }}/configs/${{env.KERNEL_DEFCONFIG_PATH}}"
+          ADD_DEFCONFIG: "${{ env.WORKSPACE }}/Kernel/LXC/LXC_defconfig"
         if: ${{ env.ENABLE_LXC == 'true' }}
         run: |
-          # Add configuration
-          for config in $(cat ${{ env.ADD_DEFCONFIG }})
-          do
-            echo $config >> ${{ env.DEFCONFIG }}
+          # 添加LXC配置
+          for config in $(cat "${{ env.ADD_DEFCONFIG }}"); do
+            echo "$config" >> "${{ env.DEFCONFIG }}"
           done
 
-          # Apply patch
-          if [ -f kernel/cgroup.c ]; then
-            row=$(sed -n -e '/^static int cgroup_add_file/=' kernel/cgroup.c)
+          # 应用cgroup补丁
+          if [ -f "kernel/cgroup.c" ]; then
+            row=$(sed -n -e '/^static int cgroup_add_file/=' "kernel/cgroup.c")
             touch /tmp/tmp.txt
-            sed -n -e '/static int cgroup_add_file/,/return 0/p' kernel/cgroup.c >> /tmp/tmp.txt
+            sed -n -e '/static int cgroup_add_file/,/return 0/p' "kernel/cgroup.c" >> /tmp/tmp.txt
             row2=$(sed -n -e '/return 0/=' /tmp/tmp.txt)
-            row3=$(echo `expr $row + $row2 - 1`)
-            sed -i "$row3 i\        }" kernel/cgroup.c
-            sed -i "$row3 i\                kernfs_create_link(cgrp->kn, name, kn);" kernel/cgroup.c
-            sed -i "$row3 i\                snprintf(name, CGROUP_FILE_NAME_MAX, \"%s.%s\", cft->ss->name, cft->name);" kernel/cgroup.c
-            sed -i "$row3 i\        if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) && !(cft->flags & CFTYPE_NO_PREFIX)) {" kernel/cgroup.c
+            row3=$(expr $row + $row2 - 1)
+            sed -i "${row3} i\        }" "kernel/cgroup.c"
+            sed -i "${row3} i\                kernfs_create_link(cgrp->kn, name, kn);" "kernel/cgroup.c"
+            sed -i "${row3} i\                snprintf(name, CGROUP_FILE_NAME_MAX, \"%s.%s\", cft->ss->name, cft->name);" "kernel/cgroup.c"
+            sed -i "${row3} i\        if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) && !(cft->flags & CFTYPE_NO_PREFIX)) {" "kernel/cgroup.c"
             echo "🎖️ Modify kernel/cgroup.c"
           fi
-          if [ -f kernel/cgroup/cgroup.c ]; then
-            row=$(sed -n -e '/^static int cgroup_add_file/=' kernel/cgroup/cgroup.c)
+          if [ -f "kernel/cgroup/cgroup.c" ]; then
+            row=$(sed -n -e '/^static int cgroup_add_file/=' "kernel/cgroup/cgroup.c")
             touch /tmp/tmp.txt
-            sed -n -e '/static int cgroup_add_file/,/return 0/p' kernel/cgroup/cgroup.c >> /tmp/tmp.txt
+            sed -n -e '/static int cgroup_add_file/,/return 0/p' "kernel/cgroup/cgroup.c" >> /tmp/tmp.txt
             row2=$(sed -n -e '/return 0/=' /tmp/tmp.txt)
-            row3=$(echo `expr $row + $row2 - 1`)
-            sed -i "$row3 i\        }" kernel/cgroup/cgroup.c
-            sed -i "$row3 i\                kernfs_create_link(cgrp->kn, name, kn);" kernel/cgroup/cgroup.c
-            sed -i "$row3 i\                snprintf(name, CGROUP_FILE_NAME_MAX, \"%s.%s\", cft->ss->name, cft->name);" kernel/cgroup/cgroup.c
-            sed -i "$row3 i\        if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) && !(cft->flags & CFTYPE_NO_PREFIX)) {" kernel/cgroup/cgroup.c
+            row3=$(expr $row + $row2 - 1)
+            sed -i "${row3} i\        }" "kernel/cgroup/cgroup.c"
+            sed -i "${row3} i\                kernfs_create_link(cgrp->kn, name, kn);" "kernel/cgroup/cgroup.c"
+            sed -i "${row3} i\                snprintf(name, CGROUP_FILE_NAME_MAX, \"%s.%s\", cft->ss->name, cft->name);" "kernel/cgroup/cgroup.c"
+            sed -i "${row3} i\        if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) && !(cft->flags & CFTYPE_NO_PREFIX)) {" "kernel/cgroup/cgroup.c"
             echo "🎖️ Modify kernel/cgroup/cgroup.c"
           fi
-          if [ -f android-kernel/net/netfilter/xt_qtaguid.c ]; then
-            git am -s < ${{ env.WORKSPACE }}/LXC/Patches/xt_qtaguid.patch
+          if [ -f "android-kernel/net/netfilter/xt_qtaguid.c" ]; then
+            git am -s < "${{ env.WORKSPACE }}/LXC/Patches/xt_qtaguid.patch"
             echo "🎖️ Apply xt_qtaguid.patch"
           fi
 
@@ -317,10 +278,9 @@ jobs:
         run: |
           echo "🤔 PATH Variable: $PATH"
           export KBUILD_BUILD_HOST=Github-Action
-          export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
+          export KBUILD_BUILD_USER=$(echo "${{ github.actor }}" | tr A-Z a-z)
           make ${{ env.ARGS }} ${{ env.KERNEL_DEFCONFIG_PATH }}
           make ${{ env.ARGS }}
-          # tree ${{ env.OUT_DIR }}
 
       - name: 💛 Upload Image
         uses: actions/upload-artifact@v4
@@ -388,11 +348,11 @@ jobs:
           ARCH: ${{ steps.generate-args.outputs.ARCH }}
           ANYKERNEL3_FILE: "${{ env.WORKSPACE }}/AnyKernel3-${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}"
         run: |
-          if echo -n '${{ env.PARAMS }}' | jq -e 'has("custom")' > /dev/null; then
-            CUSTOM_ANYKERNEL3=$(echo -n '${{ env.PARAMS }}' | jq -r ".custom")
-            ANYKERNEL_REPO=$(echo $CUSTOM_ANYKERNEL3 | jq -r ".repo")
-            ANYKERNEL_BRANCH=$(echo $CUSTOM_ANYKERNEL3 | jq -r ".branch")
-            git clone --recursive --depth=1 -j $(nproc) --branch $ANYKERNEL_BRANCH $ANYKERNEL_REPO AnyKernel3
+          if echo -n "${{ env.PARAMS }}" | jq -e 'has("custom")' > /dev/null; then
+            CUSTOM_ANYKERNEL3=$(echo -n "${{ env.PARAMS }}" | jq -r ".custom")
+            ANYKERNEL_REPO=$(echo "$CUSTOM_ANYKERNEL3" | jq -r ".repo")
+            ANYKERNEL_BRANCH=$(echo "$CUSTOM_ANYKERNEL3" | jq -r ".branch")
+            git clone --recursive --depth=1 -j $(nproc) --branch "$ANYKERNEL_BRANCH" "$ANYKERNEL_REPO" AnyKernel3
             echo "🤔 Use custom AnyKernel3 => ($ANYKERNEL_REPO)"
           else
             git clone --recursive --depth=1 -j $(nproc) https://github.com/osm0sis/AnyKernel3 AnyKernel3
@@ -402,22 +362,14 @@ jobs:
             echo "🤔 Use origin Anykernel3 => (https://github.com/osm0sis/AnyKernel3)"
           fi
 
-
+          # 复制内核镜像文件
           if [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ]; then
-            cp -f ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb ./AnyKernel3/
+            cp -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ./AnyKernel3/
           else
-            if [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image" ]; then
-              cp -f ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image ./AnyKernel3/
-            fi
-            if [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz" ]; then
-              cp -f ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz ./AnyKernel3/
-            fi
-            if [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo" ]; then
-              cp -f ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo ./AnyKernel3/
-            fi
-            if [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img" ]; then
-              cp -f ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img ./AnyKernel3/
-            fi
+            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image" ] && cp -f "$_" ./AnyKernel3/
+            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz" ] && cp -f "$_" ./AnyKernel3/
+            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo" ] && cp -f "$_" ./AnyKernel3/
+            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img" ] && cp -f "$_" ./AnyKernel3/
           fi
 
           cd AnyKernel3/
