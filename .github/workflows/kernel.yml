@@ -84,17 +84,34 @@ jobs:
       - name: 😄 Checkout
         uses: actions/checkout@v4
 
-      # Install prerequisites for Ubuntu
-      - name: ⭐ Install prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl git ftp lftp wget libarchive-tools ccache python2 python2-dev python3
-          sudo apt-get install -y pngcrush schedtool dpkg-dev liblz4-tool make optipng maven device-tree-compiler 
-          sudo apt-get install -y libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc
-          sudo apt-get install -y libxml2-utils libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools lzop flex tree
-          sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev
-          sudo apt-get install -y pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl 
-          sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
+     # 替换原有的 "⭐ Install prerequisites" 步骤
+      - name: ⭐ Install prerequisites (fixed Python 2)
+         run: |
+    sudo apt-get update
+    # 安装其他依赖（移除 python2 和 python2-dev）
+    sudo apt-get install -y curl git ftp lftp wget libarchive-tools ccache python3
+    sudo apt-get install -y pngcrush schedtool dpkg-dev liblz4-tool make optipng maven device-tree-compiler 
+    sudo apt-get install -y libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc
+    sudo apt-get install -y libxml2-utils libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools lzop flex tree
+    sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev
+    sudo apt-get install -y pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl 
+    sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
+
+    # 手动安装 Python 2（适用于 Ubuntu 22.04+）
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2_2.7.18-1~20.04.3ubuntu1_amd64.deb
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2-minimal_2.7.18-1~20.04.3ubuntu1_amd64.deb
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2-stdlib_2.7.18-1~20.04.3ubuntu1_amd64.deb
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2.7_2.7.18-1~20.04.3ubuntu1_amd64.deb
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/libpython2.7-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2.7_2.7.18-1~20.04.3ubuntu1_amd64.deb
+    wget https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa/+files/python2.7-dev_2.7.18-1~20.04.3ubuntu1_amd64.deb
+
+    # 安装下载的 Python 2 包
+    sudo dpkg -i *.deb || sudo apt-get -f install -y
+
+    # 验证安装
+    python2 --version
 
       # Initialize ccache
       - name: 🚄 Setup ccache
