@@ -34,13 +34,12 @@
     "AnyKernel3": {
       "use": false,
       "release": true
-      // 如需使用自定义AnyKernel3仓库，可添加以下配置
-      // "custom": {
-      //   "repo": "你的AnyKernel3仓库地址",
-      //   "branch": "对应的分支"
-      // }
+      "custom": {
+      "repo": "",
+      "branch": “"
+}
     },
-    "enableKernelSU": false,  // 根据需求设置true或false
-    "enableLXC": false        // 根据需求设置true或false
+    "enableKernelSU": false,
+    "enableLXC": false，
   }
 ]
