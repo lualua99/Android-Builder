@@ -33,8 +33,7 @@ jobs:
   Build-Kernel:
     name: "🐎 Build kernel"
     runs-on: ubuntu-latest
-    needs:
-      - Read-configuration
+    needs: Read-configuration
     strategy:
       max-parallel: 4
       fail-fast: false
@@ -64,25 +63,25 @@ jobs:
       - name: 😄 Checkout
         uses: actions/checkout@v4
 
-      - name: ⭐ Install prerequisites (fixed Python 2)
+      - name: ⭐ Install prerequisites
         run: |
           sudo apt-get update
-          # 安装其他依赖
+          # 基础依赖
           sudo apt-get install -y curl git ftp lftp wget libarchive-tools ccache python3
           sudo apt-get install -y pngcrush schedtool dpkg-dev liblz4-tool make optipng maven device-tree-compiler 
+          # 修复32位依赖包名
           sudo apt-get install -y libc6-dev-i386 lib32ncurses-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc
+          # 其他编译依赖
           sudo apt-get install -y libxml2-utils libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools lzop flex tree
           sudo apt-get install -y build-essential bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev
           sudo apt-get install -y pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl 
           sudo apt-get install -y zip unzip tar gzip bzip2 rar unrar llvm g++-multilib bison gperf zlib1g-dev automake
 
-          # 使用 Ubuntu 20.04 源安装 Python 2（稳定可靠）
+          # 安装Python 2（使用Ubuntu 20.04源）
           echo "deb http://archive.ubuntu.com/ubuntu focal main universe" | sudo tee /etc/apt/sources.list.d/focal.list
           sudo apt-get update
           sudo apt-get install -y -t focal python2 python2-dev
-
-          # 验证安装
-          python2 --version
+          python2 --version  # 验证安装
 
           # 清理临时源
           sudo rm /etc/apt/sources.list.d/focal.list
@@ -110,278 +109,179 @@ jobs:
             cache-${{ env.KERNEL_NAME }}-${{env.HASH}}-
             cache-${{ env.KERNEL_NAME }}-
 
-      - name: 🌟 Clone kernel source => (${{ env.KERNEL_REPO }})
+      - name: 🌟 Clone kernel source (with auth)
         run: |
-          git clone --recursive --depth=1 -j $(nproc) --branch ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_REPO }} ${{ env.KERNEL_NAME }}
+          # 使用Secrets中的令牌进行私有仓库认证
+          AUTH_REPO_URL="https://${{ secrets.KERNEL_GIT_TOKEN }}@github.com/lualua99/kernel-msm-4.19.git"
+          
+          # 克隆仓库（递归克隆子模块，浅克隆加速）
+          git clone \
+            --recursive \
+            --depth=1 \
+            -j $(nproc) \
+            --branch ${{ env.KERNEL_BRANCH }} \
+            "$AUTH_REPO_URL" \
+            ${{ env.KERNEL_NAME }}
 
       - name: 💫 Get toolchains
         env:
           toolchains: "${{ toJSON(matrix.CONFIG.toolchains) }}"
         run: |
           toolchains_num="$(echo $toolchains | jq 'length')"
-          echo "🤔 There is $toolchains_num defined toolchains."
+          echo "🤔 Found $toolchains_num toolchains to install."
 
           for ((i=0;i<toolchains_num;i++)); do
             toolchain=$(echo $toolchains | jq -r ".[$i]")
             toolchain_name=$(echo $toolchain | jq -r ".name")
+            mkdir -p "$toolchain_name"
             
             if echo $toolchain | jq -e 'has("url")' > /dev/null; then
+              # 从URL下载工具链
               toolchain_url=$(echo $toolchain | jq -r ".url")
-              mkdir -p "$toolchain_name"
-
-              wget "$toolchain_url"
+              wget -q "$toolchain_url" -O toolchain.tar
+              
+              # 自动识别压缩格式并解压
               filename="${toolchain_url##*/}"
               case "$filename" in
-                *.zip)
-                  unzip -d "$toolchain_name" "$filename"
-                  ;;
-                *.tar)
-                  tar xvf "$filename" -C "$toolchain_name"
-                  ;;
-                *.tar.gz|*.tgz)
-                  tar zxvf "$filename" -C "$toolchain_name"
-                  ;;
-                *.tar.xz)
-                  tar xvf "$filename" -C "$toolchain_name"
-                  ;;
-                *.rar)
-                  unrar x "$filename" "$toolchain_name"
-                  ;;
-                *)
-                  echo "unknown file type: $filename"
-                  ;;
+                *.zip) unzip -q toolchain.tar -d "$toolchain_name" ;;
+                *.tar) tar xf toolchain.tar -C "$toolchain_name" ;;
+                *.tar.gz|*.tgz) tar zxf toolchain.tar -C "$toolchain_name" ;;
+                *.tar.xz) tar xf toolchain.tar -C "$toolchain_name" ;;
+                *.rar) unrar x -y toolchain.tar "$toolchain_name" ;;
+                *) echo "⚠️ Unknown format: $filename" && exit 1 ;;
               esac
-              rm "$filename"
-              echo "🤔 Download $toolchain_name => ($toolchain_url)"
+              rm toolchain.tar
             else
+              # 从Git仓库克隆工具链
               toolchain_repo=$(echo $toolchain | jq -r ".repo")
               toolchain_branch=$(echo $toolchain | jq -r ".branch")
-              git clone --recursive --depth=1 -j $(nproc) --branch "$toolchain_branch" "$toolchain_repo" "$toolchain_name"
-              echo "🤔 Clone $toolchain_name => ($toolchain_repo)"
+              git clone \
+                --recursive \
+                --depth=1 \
+                -j $(nproc) \
+                --branch "$toolchain_branch" \
+                "$toolchain_repo" \
+                "$toolchain_name"
             fi
 
-            jq -r ".binaryEnv[] | tostring" <<< "$toolchain" | while read -r subPath; do
+            # 添加工具链到PATH
+            jq -r ".binaryEnv[]" <<< "$toolchain" | while read -r subPath; do
               echo "${{ env.WORKSPACE }}/$toolchain_name/$subPath" >> $GITHUB_PATH
             done
           done
 
-      - name: 😎 Set build args
+      - name: 😎 Set build arguments
         id: generate-args
         env:
           PARAMS: "${{ toJSON(matrix.CONFIG.params) }}"
           THREAD: $(nproc --all)
         run: |
-          echo "🤔 PATH Variable: $PATH"
-
           ARCH=$(echo "$PARAMS" | jq -r ".ARCH")
           CC=$(echo "$PARAMS" | jq -r ".CC")
 
           args="-j${{ env.THREAD }} O=${{ env.OUT_DIR }} ARCH=$ARCH"
           if [ -n "$CC" ]; then
-            if [[ "$CC" == *"/"* ]]; then
-              CC="${{ env.WORKSPACE }}/$CC"
-            fi
-            if [ "${{ env.ENABLE_CCACHE }}" = true ]; then
-              args="$args CC=\"ccache $CC\""
-            else
-              args="$args CC=$CC"
-            fi
+            [["$CC" == *"/"*]] && CC="${{ env.WORKSPACE }}/$CC"
+            [ "${{ env.ENABLE_CCACHE }}" = true ] && args="$args CC=\"ccache $CC\"" || args="$args CC=$CC"
           fi
-          while read -r externalCommand; do
-            key=$(echo "$externalCommand" | cut -d= -f1)
-            value=$(echo "$externalCommand" | cut -d= -f2)
-            if [[ "$value" == *"/"* ]]; then
-              value="${{ env.WORKSPACE }}/$value"
-            fi
+
+          # 添加额外编译参数
+          while read -r cmd; do
+            key=$(echo "$cmd" | cut -d= -f1)
+            value=$(echo "$cmd" | cut -d= -f2)
+            [[ "$value" == *"/"* ]] && value="${{ env.WORKSPACE }}/$value"
             args="$args $key=$value"
           done < <(jq -r '.externalCommands | to_entries[] | "\(.key)=\(.value)"' <<< "$PARAMS")
 
           echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
           echo "ARGS=$args" >> $GITHUB_OUTPUT
-          echo "🤔 $args"
-        shell: bash
 
-      - name: 😋 Setup KernelSU
+      - name: 😋 Setup KernelSU (if enabled)
         working-directory: ${{ env.KERNEL_NAME }}
-        env:
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
         if: ${{ env.ENABLE_KERNELSU == 'true' }}
         run: |
-          if [ -d "./KernelSU" ]; then
-            rm -rf "./KernelSU"
-          fi
-          if [ -d "./drivers/kernelsu" ]; then
-            rm -rf "./drivers/kernelsu"
-          fi
-
+          # 清理旧文件
+          rm -rf ./KernelSU ./drivers/kernelsu
+          # 安装KernelSU
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+          # 添加必要配置
+          echo -e "CONFIG_KPROBES=y\nCONFIG_HAVE_KPROBES=y\nCONFIG_KPROBE_EVENTS=y" >> \
+            "arch/${{ steps.generate-args.outputs.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
 
-          echo -e "CONFIG_KPROBES=y" >> "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
-          echo -e "CONFIG_HAVE_KPROBES=y" >> "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
-          echo -e "CONFIG_KPROBE_EVENTS=y" >> "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
-
-          cat "arch/${{ env.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
-
-      - name: 😋 Setup LXC docker
+      - name: 😋 Setup LXC (if enabled)
         working-directory: ${{ env.KERNEL_NAME }}
-        env:
-          DEFCONFIG: "${{ env.WORKSPACE }}/${{ env.KERNEL_NAME }}/arch/${{ steps.generate-args.outputs.ARCH }}/configs/${{env.KERNEL_DEFCONFIG_PATH}}"
-          ADD_DEFCONFIG: "${{ env.WORKSPACE }}/Kernel/LXC/LXC_defconfig"
         if: ${{ env.ENABLE_LXC == 'true' }}
         run: |
-          for config in $(cat "${{ env.ADD_DEFCONFIG }}"); do
-            echo "$config" >> "${{ env.DEFCONFIG }}"
+          DEFCONFIG="arch/${{ steps.generate-args.outputs.ARCH }}/configs/${{ env.KERNEL_DEFCONFIG_PATH }}"
+          # 添加LXC配置
+          while read -r cfg; do echo "$cfg" >> "$DEFCONFIG"; done < "${{ env.WORKSPACE }}/Kernel/LXC/LXC_defconfig"
+          # 应用cgroup补丁
+          for cgroup_file in "kernel/cgroup.c" "kernel/cgroup/cgroup.c"; do
+            [ -f "$cgroup_file" ] || continue
+            row=$(sed -n '/^static int cgroup_add_file/=' "$cgroup_file")
+            sed -n '/static int cgroup_add_file/,/return 0/p' "$cgroup_file" > /tmp/tmp.txt
+            row2=$(sed -n '/return 0/=' /tmp/tmp.txt)
+            row3=$((row + row2 - 1))
+            sed -i "${row3}i\        }\n        if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) && !(cft->flags & CFTYPE_NO_PREFIX)) {\n                snprintf(name, CGROUP_FILE_NAME_MAX, \"%%s.%%s\", cft->ss->name, cft->name);\n                kernfs_create_link(cgrp->kn, name, kn);" "$cgroup_file"
           done
 
-          if [ -f "kernel/cgroup.c" ]; then
-            row=$(sed -n -e '/^static int cgroup_add_file/=' "kernel/cgroup.c")
-            touch /tmp/tmp.txt
-            sed -n -e '/static int cgroup_add_file/,/return 0/p' "kernel/cgroup.c" >> /tmp/tmp.txt
-            row2=$(sed -n -e '/return 0/=' /tmp/tmp.txt)
-            row3=$(expr $row + $row2 - 1)
-            sed -i "${row3} i\        }" "kernel/cgroup.c"
-            sed -i "${row3} i\                kernfs_create_link(cgrp->kn, name, kn);" "kernel/cgroup.c"
-            sed -i "${row3} i\                snprintf(name, CGROUP_FILE_NAME_MAX, \"%s.%s\", cft->ss->name, cft->name);" "kernel/cgroup.c"
-            sed -i "${row3} i\        if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) && !(cft->flags & CFTYPE_NO_PREFIX)) {" "kernel/cgroup.c"
-            echo "🎖️ Modify kernel/cgroup.c"
-          fi
-          if [ -f "kernel/cgroup/cgroup.c" ]; then
-            row=$(sed -n -e '/^static int cgroup_add_file/=' "kernel/cgroup/cgroup.c")
-            touch /tmp/tmp.txt
-            sed -n -e '/static int cgroup_add_file/,/return 0/p' "kernel/cgroup/cgroup.c" >> /tmp/tmp.txt
-            row2=$(sed -n -e '/return 0/=' /tmp/tmp.txt)
-            row3=$(expr $row + $row2 - 1)
-            sed -i "${row3} i\        }" "kernel/cgroup/cgroup.c"
-            sed -i "${row3} i\                kernfs_create_link(cgrp->kn, name, kn);" "kernel/cgroup/cgroup.c"
-            sed -i "${row3} i\                snprintf(name, CGROUP_FILE_NAME_MAX, \"%s.%s\", cft->ss->name, cft->name);" "kernel/cgroup/cgroup.c"
-            sed -i "${row3} i\        if (cft->ss && (cgrp->root->flags & CGRP_ROOT_NOPREFIX) && !(cft->flags & CFTYPE_NO_PREFIX)) {" "kernel/cgroup/cgroup.c"
-            echo "🎖️ Modify kernel/cgroup/cgroup.c"
-          fi
-          if [ -f "android-kernel/net/netfilter/xt_qtaguid.c" ]; then
-            git am -s < "${{ env.WORKSPACE }}/LXC/Patches/xt_qtaguid.patch"
-            echo "🎖️ Apply xt_qtaguid.patch"
-          fi
-
-      - name: 👍 Start building the kernel
+      - name: 👍 Start building kernel
         working-directory: ${{ env.KERNEL_NAME }}
         env:
           ARGS: ${{ steps.generate-args.outputs.ARGS }}
         run: |
-          echo "🤔 PATH Variable: $PATH"
           export KBUILD_BUILD_HOST=Github-Action
           export KBUILD_BUILD_USER=$(echo "${{ github.actor }}" | tr A-Z a-z)
+          # 生成配置并编译
           make ${{ env.ARGS }} ${{ env.KERNEL_DEFCONFIG_PATH }}
           make ${{ env.ARGS }}
 
-      - name: 💛 Upload Image
+      - name: 📤 Upload build artifacts
         uses: actions/upload-artifact@v4
-        env:
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
         with:
-          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-Image
-          path: ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image
-          if-no-files-found: ignore
+          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-artifacts
+          path: |
+            ${{ env.OUT_DIR }}/arch/${{ steps.generate-args.outputs.ARCH }}/boot/Image*
+            ${{ env.OUT_DIR }}/arch/${{ steps.generate-args.outputs.ARCH }}/boot/dtb*
+            ${{ env.OUT_DIR }}/arch/${{ steps.generate-args.outputs.ARCH }}/boot/*.img
+          if-no-files-found: warn
           retention-days: 7
 
-      - name: 💙 Upload Image.gz
-        uses: actions/upload-artifact@v4
-        env:
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
-        with:
-          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-Image.gz
-          path: ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: 💙 Upload Image.gz-dtb
-        uses: actions/upload-artifact@v4
-        env:
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
-        with:
-          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-Image.gz-dtb
-          path: ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: 💜 Upload dtb
-        uses: actions/upload-artifact@v4
-        env:
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
-        with:
-          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-dtb
-          path: ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtb
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: ❤️ Upload dtbo.img
-        uses: actions/upload-artifact@v4
-        env:
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
-        with:
-          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-dtbo.img
-          path: ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: ☢️ Upload output directory
-        uses: actions/upload-artifact@v4
-        env:
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
-        with:
-          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-Output
-          path: ${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/
-          retention-days: 7
-
-      - name: ⏰ Pack Anykernel3
+      - name: 📦 Pack AnyKernel3 (if enabled)
         if: ${{ env.USE_ANYKERNEL3 == 'true' }}
-        env:
-          PARAMS: "${{ toJSON(matrix.CONFIG.AnyKernel3) }}"
-          ARCH: ${{ steps.generate-args.outputs.ARCH }}
-          ANYKERNEL3_FILE: "${{ env.WORKSPACE }}/AnyKernel3-${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}"
         run: |
-          if echo -n "${{ env.PARAMS }}" | jq -e 'has("custom")' > /dev/null; then
-            CUSTOM_ANYKERNEL3=$(echo -n "${{ env.PARAMS }}" | jq -r ".custom")
-            ANYKERNEL_REPO=$(echo "$CUSTOM_ANYKERNEL3" | jq -r ".repo")
-            ANYKERNEL_BRANCH=$(echo "$CUSTOM_ANYKERNEL3" | jq -r ".branch")
-            git clone --recursive --depth=1 -j $(nproc) --branch "$ANYKERNEL_BRANCH" "$ANYKERNEL_REPO" AnyKernel3
-            echo "🤔 Use custom AnyKernel3 => ($ANYKERNEL_REPO)"
+          # 克隆AnyKernel3
+          if echo "${{ toJSON(matrix.CONFIG.AnyKernel3) }}" | jq -e '.custom' > /dev/null; then
+            repo=$(echo "${{ toJSON(matrix.CONFIG.AnyKernel3) }}" | jq -r '.custom.repo')
+            branch=$(echo "${{ toJSON(matrix.CONFIG.AnyKernel3) }}" | jq -r '.custom.branch')
+            git clone --depth=1 --branch "$branch" "$repo" AnyKernel3
           else
-            git clone --recursive --depth=1 -j $(nproc) https://github.com/osm0sis/AnyKernel3 AnyKernel3
-            sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
-            sed -i 's!BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!g' AnyKernel3/anykernel.sh
-            sed -i 's/is_slot_device=0;/is_slot_device=auto;/g' AnyKernel3/anykernel.sh
-            echo "🤔 Use origin Anykernel3 => (https://github.com/osm0sis/AnyKernel3)"
+            git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
+            # 通用化配置
+            sed -i 's/do.devicecheck=1/do.devicecheck=0/; s/BLOCK=.*/BLOCK=auto;/; s/is_slot_device=0;/is_slot_device=auto;/' AnyKernel3/anykernel.sh
           fi
 
-          if [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ]; then
-            cp -f "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz-dtb" ./AnyKernel3/
-          else
-            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image" ] && cp -f "$_" ./AnyKernel3/
-            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/Image.gz" ] && cp -f "$_" ./AnyKernel3/
-            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo" ] && cp -f "$_" ./AnyKernel3/
-            [ -e "${{ env.OUT_DIR }}/arch/${{ env.ARCH }}/boot/dtbo.img" ] && cp -f "$_" ./AnyKernel3/
-          fi
+          # 复制内核镜像
+          BOOT_DIR="${{ env.OUT_DIR }}/arch/${{ steps.generate-args.outputs.ARCH }}/boot"
+          [ -f "$BOOT_DIR/Image.gz-dtb" ] && cp -f "$_" AnyKernel3/
+          [ -f "$BOOT_DIR/Image" ] && cp -f "$_" AnyKernel3/
+          [ -f "$BOOT_DIR/dtbo.img" ] && cp -f "$_" AnyKernel3/
 
-          cd AnyKernel3/
-          zip -q -r "${{ env.ANYKERNEL3_FILE }}.zip" *
+          # 打包
+          cd AnyKernel3 && zip -r9 "${{ env.WORKSPACE }}/${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-flashable.zip" *
 
-      - name: "💾 Upload AnyKernel3 image => (${{ env.BUILD_DATE }})"
-        env:
-          ANYKERNEL3_FILE: "AnyKernel3-${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}"
-        uses: actions/upload-artifact@v4
+      - name: 🚀 Upload flashable zip
         if: ${{ env.USE_ANYKERNEL3 == 'true' }}
+        uses: actions/upload-artifact@v4
         with:
-          name: "${{ env.ANYKERNEL3_FILE }}"
-          path: AnyKernel3/*
+          name: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-flashable
+          path: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-flashable.zip
+          retention-days: 30
 
-      - name: 🧧 Create GitHub Release => (${{ env.BUILD_DATE }})
-        env:
-          ANYKERNEL3_FILE: "${{ env.WORKSPACE }}/AnyKernel3-${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}"
-        continue-on-error: true
-        uses: softprops/action-gh-release@v2
+      - name: 🎉 Create GitHub Release
         if: ${{ env.USE_ANYKERNEL3 == 'true' && env.CONFIRM_RELEASE == 'true' }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.BUILD_DATE }}.${{ github.run_number }}
-          files: "${{ env.ANYKERNEL3_FILE }}.zip"
+          tag_name: ${{ env.KERNEL_DEVICE }}-${{ env.BUILD_DATE }}
+          files: ${{ env.KERNEL_NAME }}-${{ env.BUILD_DATE }}-flashable.zip
           generate_release_notes: true
-    
