@@ -1,11 +1,11 @@
 [
   {
     "kernelSource": {
-      "name": "msm-4.19-kernel",
+      "name": "msm-4.19-kernel-build",
       "repo": "https://github.com/lualua99/kernel-msm-4.19.git",
-      "branch": "main",
-      "device": "alioth",
-      "defconfig": "arch/arm64/configs/alioth_user_defconfig"
+      "branch": "master",
+      "device": "alioth",  // 替换为实际设备代号（如：oneplus7pro）
+      "defconfig": "arch/arm64/configs/alioth_user_defconfig"  // 替换为实际defconfig路径
     },
     "toolchains": [
       {
@@ -18,6 +18,11 @@
         "name": "aarch64-gcc",
         "url": "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz",
         "binaryEnv": ["bin"]
+      },
+      {
+        "name": "arm-gcc",
+        "url": "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz",
+        "binaryEnv": ["bin"]
       }
     ],
     "enableCcache": true,
@@ -26,20 +31,28 @@
       "CC": "clang",
       "externalCommands": {
         "CLANG_TRIPLE": "aarch64-linux-gnu-",
-        "CROSS_COMPILE": "proton-clang/bin/aarch64-linux-gnu-",
-        "CROSS_COMPILE_ARM32": "proton-clang/bin/arm-linux-gnueabi-",
-        "LD": "ld.lld"
+        "CROSS_COMPILE": "aarch64-linux-android-",
+        "CROSS_COMPILE_ARM32": "arm-linux-androideabi-",
+        "LD": "ld.lld",
+        "AR": "llvm-ar",
+        "NM": "llvm-nm",
+        "OBJCOPY": "llvm-objcopy",
+        "OBJDUMP": "llvm-objdump",
+        "READELF": "llvm-readelf",
+        "OBJSIZE": "llvm-size",
+        "STRIP": "llvm-strip"
       }
     },
     "AnyKernel3": {
-      "use": false,
+      "use": true,
       "release": true
-      "custom": {
-      "repo": "",
-      "branch": “"
-}
+      // 如需自定义AnyKernel3，取消下面注释并修改
+      // "custom": {
+      //   "repo": "https://github.com/your-username/AnyKernel3",
+      //   "branch": "your-device-branch"
+      // }
     },
     "enableKernelSU": false,
-    "enableLXC": false，
+    "enableLXC": false
   }
 ]
